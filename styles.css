@@ -9,6 +9,7 @@ body{font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0;
 .app{max-width:780px;margin:28px auto;padding:16px}
 header h1{text-align:center;margin:0 0 16px;color:var(--accent)}
 .card{background:var(--card);padding:12px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:12px}
+.muted{color:var(--muted)}
 .form-card label{display:block;margin:6px 0;font-size:14px;color:var(--muted)}
 input[type="text"], input[type="date"], input[type="number"], select{width:100%;padding:8px;margin-top:6px;border:1px solid #e4e6ea;border-radius:6px}
 .form-actions{text-align:right;margin-top:8px}
@@ -16,9 +17,15 @@ button{background:var(--accent);color:white;border:none;padding:8px 12px;border-
 .stats{display:flex;gap:12px;justify-content:space-between}
 .stat{flex:1;text-align:center}
 .stat strong{display:block;font-size:20px}
+.status,.summary{margin:10px 0 0;font-size:14px}
+.status[data-tone="warn"]{color:#8a6d1f}
+.status[data-tone="error"]{color:#b42318}
 .entries{list-style:none;padding:0;margin:0}
 .entries li{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f0f0f0}
 .entry-info{flex:1}
+.entry-placeholder{color:var(--muted);justify-content:center}
 .entry-actions{display:flex;gap:8px}
 .entry-actions button{background:#eee;color:#333;padding:6px;border-radius:6px}
+.pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.pagination button[disabled]{opacity:0.5;cursor:not-allowed}
 @media(min-width:600px){.form-card form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-card label{margin:0}}

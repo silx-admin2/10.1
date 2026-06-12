@@ -1,77 +1,190 @@
 const STORAGE_KEY = 'coffee-tracker-v1'
+const PAGE_SIZE = 10
+
+function $(id){ return document.getElementById(id) }
+
+function updateStatus(message, tone = 'info') {
+  const status = $('appStatus')
+  if(!status) return
+  status.textContent = message
+  status.dataset.tone = tone
+}
+
+function reportError(label, error) {
+  console.error(`[monitor] ${label}`, error)
+}
+
+function reportMetric(name, value) {
+  console.info(`[metric] ${name}`, value)
+}
+
+window.addEventListener('error', event => {
+  reportError('Unexpected error', event.error || event.message)
+  updateStatus('Something went wrong. Please refresh.', 'error')
+})
+
+window.addEventListener('unhandledrejection', event => {
+  reportError('Async error', event.reason)
+  updateStatus('Background task failed. Retrying when possible.', 'warn')
+})
 
 function load() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') }
-  catch(e){ return [] }
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch(error) {
+    reportError('Saved history could not be read', error)
+    updateStatus('Saved history could not be read. Starting fresh.', 'warn')
+    return []
+  }
 }
 
 function save(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) }
 
-function $(id){ return document.getElementById(id) }
+async function retry(operation, { retries = 2, delay = 250, label = 'Operation failed' } = {}) {
+  let lastError
 
-const state = { entries: load() }
+  for(let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await operation()
+    } catch(error) {
+      lastError = error
+      reportError(`${label} (attempt ${attempt + 1})`, error)
+      if(attempt === retries) break
+      updateStatus(`${label}. Retrying…`, 'warn')
+      await new Promise(resolve => window.setTimeout(resolve, delay * (attempt + 1)))
+    }
+  }
 
-function render() {
-  const list = $('entriesList')
-  list.innerHTML = ''
-  state.entries.sort((a,b)=> b.id - a.id).forEach(e=>{
-    const li = document.createElement('li')
-    const info = document.createElement('div')
-    info.className = 'entry-info'
-    info.innerHTML = `<div><strong>${escapeHtml(e.type)}</strong> — ${e.cups} cup(s) on ${e.date}</div><div class="muted">${escapeHtml(e.notes||'')}</div>`
+  throw lastError
+}
 
-    const actions = document.createElement('div')
-    actions.className = 'entry-actions'
-    const editBtn = document.createElement('button')
-    editBtn.textContent = 'Edit'
-    editBtn.onclick = ()=> editEntry(e.id)
-    const delBtn = document.createElement('button')
-    delBtn.textContent = 'Delete'
-    delBtn.onclick = ()=> deleteEntry(e.id)
+const state = {
+  entries: load(),
+  currentPage: 1,
+  totalCups: 0,
+  todayCups: 0,
+  entriesByDate: new Map(),
+  renderEntriesPage: null
+}
 
-    actions.appendChild(editBtn)
-    actions.appendChild(delBtn)
-    li.appendChild(info)
-    li.appendChild(actions)
-    list.appendChild(li)
+function rebuildEntryIndex() {
+  const today = new Date().toISOString().slice(0,10)
+  const entriesByDate = new Map()
+  let totalCups = 0
+  let todayCups = 0
+
+  state.entries.forEach(entry => {
+    const cups = Number(entry.cups) || 0
+    totalCups += cups
+    if(entry.date === today) todayCups += cups
+
+    const bucket = entriesByDate.get(entry.date) || []
+    bucket.push(entry)
+    entriesByDate.set(entry.date, bucket)
   })
 
-  // summaries
-  const total = state.entries.reduce((s,it)=> s + Number(it.cups),0)
-  $('totalCups').textContent = total
-  const today = new Date().toISOString().slice(0,10)
-  const todayTotal = state.entries.filter(it=> it.date===today).reduce((s,it)=> s+Number(it.cups),0)
-  $('todayCups').textContent = todayTotal
+  state.entriesByDate = entriesByDate
+  state.totalCups = totalCups
+  state.todayCups = todayCups
+}
+
+function getPageCount() {
+  return Math.max(1, Math.ceil(state.entries.length / PAGE_SIZE))
+}
+
+function clampPage() {
+  state.currentPage = Math.min(state.currentPage, getPageCount())
+}
+
+function getSortedEntries() {
+  return [...state.entries].sort((a,b)=> b.id - a.id)
+}
+
+function renderSummary() {
+  $('totalCups').textContent = state.totalCups
+  $('todayCups').textContent = state.todayCups
+  $('entriesSummary').textContent = `${state.entries.length} saved across ${state.entriesByDate.size || 0} day(s)`
+}
+
+function renderListFallback() {
+  const list = $('entriesList')
+  list.innerHTML = ''
+
+  const li = document.createElement('li')
+  li.className = 'entry-placeholder'
+  li.textContent = state.entries.length ? 'Loading recent entries…' : 'No entries yet.'
+  list.appendChild(li)
+
+  $('paginationControls').hidden = true
+}
+
+function render() {
+  clampPage()
+  renderSummary()
+
+  if(!state.renderEntriesPage) {
+    renderListFallback()
+    return
+  }
+
+  state.renderEntriesPage({
+    listEl: $('entriesList'),
+    paginationEl: $('paginationControls'),
+    entries: getSortedEntries(),
+    page: state.currentPage,
+    pageSize: PAGE_SIZE,
+    onEdit: editEntry,
+    onDelete: deleteEntry
+  })
+}
+
+function persistState(successMessage = 'Saved locally.') {
+  rebuildEntryIndex()
+
+  try {
+    save(state.entries)
+    updateStatus(successMessage)
+  } catch(error) {
+    reportError('Local save failed', error)
+    updateStatus('Saving failed. Your latest change is still available until you refresh.', 'error')
+  }
+
+  render()
 }
 
 function addEntry(data){
   const entry = Object.assign({ id: Date.now() }, data)
   state.entries.push(entry)
-  save(state.entries)
-  render()
+  state.currentPage = 1
+  persistState('Saved locally.')
 }
 
 function deleteEntry(id){
   if(!confirm('Delete this entry?')) return
-  state.entries = state.entries.filter(e=> e.id !== id)
-  save(state.entries)
-  render()
+  state.entries = state.entries.filter(entry => entry.id !== id)
+  persistState('Entry deleted.')
 }
 
 function editEntry(id){
-  const e = state.entries.find(x=> x.id===id)
-  if(!e) return
-  const cups = prompt('Cups', e.cups)
-  if(cups==null) return
-  const notes = prompt('Notes', e.notes||'')
-  e.cups = Number(cups) || e.cups
-  e.notes = notes
-  save(state.entries)
-  render()
-}
+  const entry = state.entries.find(item => item.id === id)
+  if(!entry) return
 
-function escapeHtml(s){ if(!s) return '';
-  return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+  const cups = prompt('Cups', entry.cups)
+  if(cups == null) return
+
+  const nextCups = Number(cups)
+  if(!Number.isFinite(nextCups) || nextCups < 1) {
+    updateStatus('Please enter at least 1 cup.', 'warn')
+    return
+  }
+
+  const notes = prompt('Notes', entry.notes || '')
+  if(notes == null) return
+
+  entry.cups = nextCups
+  entry.notes = notes.trim()
+  persistState('Entry updated.')
 }
 
 function initForm(){
@@ -79,12 +192,12 @@ function initForm(){
   const dateInput = $('date')
   dateInput.value = new Date().toISOString().slice(0,10)
 
-  form.addEventListener('submit', e=>{
-    e.preventDefault()
+  form.addEventListener('submit', event => {
+    event.preventDefault()
     const data = {
       date: $('date').value,
       type: $('type').value,
-      cups: Number($('cups').value)||1,
+      cups: Number($('cups').value) || 1,
       notes: $('notes').value.trim()
     }
     addEntry(data)
@@ -93,5 +206,86 @@ function initForm(){
   })
 }
 
+function initPagination() {
+  $('prevPage').addEventListener('click', () => {
+    if(state.currentPage === 1) return
+    state.currentPage -= 1
+    render()
+  })
+
+  $('nextPage').addEventListener('click', () => {
+    const pageCount = getPageCount()
+    if(state.currentPage >= pageCount) return
+    state.currentPage += 1
+    render()
+  })
+}
+
+function scheduleNonCriticalWork(callback) {
+  if('requestIdleCallback' in window) {
+    window.requestIdleCallback(callback, { timeout: 1200 })
+    return
+  }
+
+  window.setTimeout(callback, 0)
+}
+
+let entriesViewPromise
+
+async function ensureEntriesViewLoaded() {
+  if(state.renderEntriesPage) return state.renderEntriesPage
+
+  if(!entriesViewPromise) {
+    performance.mark('entries-view-start')
+    entriesViewPromise = retry(
+      () => import('./entries-view.js'),
+      { retries: 2, delay: 300, label: 'Entry history failed to load' }
+    ).then(module => {
+      state.renderEntriesPage = module.renderEntriesPage
+      performance.mark('entries-view-end')
+      performance.measure('entries-view-latency', 'entries-view-start', 'entries-view-end')
+      const measure = performance.getEntriesByName('entries-view-latency').slice(-1)[0]
+      if(measure) reportMetric('entries_view_load_ms', Math.round(measure.duration))
+      return state.renderEntriesPage
+    })
+  }
+
+  return entriesViewPromise
+}
+
+function bootEntriesView() {
+  scheduleNonCriticalWork(async () => {
+    try {
+      if(state.entries.length) updateStatus('Loading recent entries…')
+      await ensureEntriesViewLoaded()
+      render()
+      updateStatus('Ready')
+    } catch(error) {
+      reportError('Entry history unavailable', error)
+      updateStatus('Entry history is temporarily unavailable. Please refresh.', 'error')
+    }
+  })
+}
+
+async function registerServiceWorker() {
+  if(!('serviceWorker' in navigator)) return
+  if(!/^https?:$/.test(window.location.protocol)) return
+
+  try {
+    await retry(
+      () => navigator.serviceWorker.register('./service-worker.js'),
+      { retries: 2, delay: 400, label: 'Offline cache setup failed' }
+    )
+    reportMetric('service_worker', 'registered')
+  } catch(error) {
+    reportError('Offline cache unavailable', error)
+    updateStatus('Offline cache unavailable. Continuing without it.', 'warn')
+  }
+}
+
+rebuildEntryIndex()
 initForm()
+initPagination()
 render()
+bootEntriesView()
+window.addEventListener('load', registerServiceWorker)
