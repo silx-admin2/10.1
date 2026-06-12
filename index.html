@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coffee Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Coffee Tracker</h1>
+    </header>
+
+    <section class="card form-card">
+      <form id="entryForm">
+        <label>
+          Date
+          <input type="date" id="date" required />
+        </label>
+        <label>
+          Type
+          <select id="type">
+            <option>Espresso</option>
+            <option>Americano</option>
+            <option>Latte</option>
+            <option>Cappuccino</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label>
+          Cups
+          <input type="number" id="cups" min="1" value="1" required />
+        </label>
+        <label>
+          Notes
+          <input type="text" id="notes" placeholder="Optional notes" />
+        </label>
+        <div class="form-actions">
+          <button type="submit">Add</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card stats-card">
+      <div class="stats">
+        <div class="stat"><strong id="totalCups">0</strong><span>Total cups</span></div>
+        <div class="stat"><strong id="todayCups">0</strong><span>Today</span></div>
+      </div>
+    </section>
+
+    <section class="card list-card">
+      <h2>Entries</h2>
+      <ul id="entriesList" class="entries"></ul>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
