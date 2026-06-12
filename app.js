@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'coffee-tracker-v1'
 const FIELD_IDS = ['date', 'cups', 'notes']
+const FIELD_HINT_IDS = { date: 'dateHint', cups: 'cupsHint', notes: 'notesHint' }
 
 function load() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') }
@@ -26,7 +27,9 @@ function getFormData() {
 }
 
 function setFieldError(id, message) {
+  const describedBy = [FIELD_HINT_IDS[id], message ? `${id}Error` : ''].filter(Boolean).join(' ')
   $(id).setAttribute('aria-invalid', message ? 'true' : 'false')
+  $(id).setAttribute('aria-describedby', describedBy)
   $(`${id}Error`).textContent = message || ''
 }
 
@@ -37,7 +40,7 @@ function clearFieldErrors() {
 function validateEntry(data) {
   const errors = {}
   if(!data.date) errors.date = 'Choose a date for this coffee entry.'
-  if(!Number.isInteger(data.cups) || data.cups < 1) errors.cups = 'Enter at least 1 whole cup.'
+  if(!Number.isInteger(data.cups) || data.cups < 1) errors.cups = 'Enter a whole number of cups, starting at 1.'
   if(data.notes.length > 100) errors.notes = 'Keep notes to 100 characters or fewer.'
   return errors
 }
@@ -155,12 +158,13 @@ function initForm(){
   resetForm()
 
   FIELD_IDS.forEach(id => {
-    const eventName = id === 'notes' ? 'input' : 'change'
-    $(id).addEventListener(eventName, ()=>{
+    const validateField = ()=>{
       const errors = validateEntry(getFormData())
       setFieldError(id, errors[id] || '')
       if(!errors[id] && $('formStatus').classList.contains('is-error')) showStatus('', false)
-    })
+    }
+    $(id).addEventListener('input', validateField)
+    $(id).addEventListener('change', validateField)
   })
 
   form.addEventListener('submit', e=>{
