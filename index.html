@@ -47,13 +47,20 @@
         <div class="stat"><strong id="totalCups">0</strong><span>Total cups</span></div>
         <div class="stat"><strong id="todayCups">0</strong><span>Today</span></div>
       </div>
+      <p id="appStatus" class="status" role="status" aria-live="polite">Starting…</p>
     </section>
 
     <section class="card list-card">
       <h2>Entries</h2>
+      <p id="entriesSummary" class="summary muted">0 saved</p>
       <ul id="entriesList" class="entries"></ul>
+      <div id="paginationControls" class="pagination" hidden>
+        <button type="button" id="prevPage" data-role="prev-page">Previous</button>
+        <span id="pageStatus" data-role="page-status">Page 1 of 1</span>
+        <button type="button" id="nextPage" data-role="next-page">Next</button>
+      </div>
     </section>
   </div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
