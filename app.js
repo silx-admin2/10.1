@@ -1,7 +1,21 @@
 const STORAGE_KEY = 'coffee-tracker-v1'
 const PAGE_SIZE = 10
+const IDLE_CALLBACK_TIMEOUT = 1200
 
 function $(id){ return document.getElementById(id) }
+
+function getTodayDateString() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizeCups(value) {
+  const cups = Number(value)
+  return Number.isFinite(cups) && cups >= 1 ? cups : null
+}
 
 function updateStatus(message, tone = 'info') {
   const status = $('appStatus')
@@ -65,11 +79,12 @@ const state = {
   totalCups: 0,
   todayCups: 0,
   entriesByDate: new Map(),
+  sortedEntries: [],
   renderEntriesPage: null
 }
 
 function rebuildEntryIndex() {
-  const today = new Date().toISOString().slice(0,10)
+  const today = getTodayDateString()
   const entriesByDate = new Map()
   let totalCups = 0
   let todayCups = 0
@@ -85,6 +100,7 @@ function rebuildEntryIndex() {
   })
 
   state.entriesByDate = entriesByDate
+  state.sortedEntries = [...state.entries].sort((a, b) => b.id - a.id)
   state.totalCups = totalCups
   state.todayCups = todayCups
 }
@@ -97,14 +113,12 @@ function clampPage() {
   state.currentPage = Math.min(state.currentPage, getPageCount())
 }
 
-function getSortedEntries() {
-  return [...state.entries].sort((a,b)=> b.id - a.id)
-}
-
 function renderSummary() {
   $('totalCups').textContent = state.totalCups
   $('todayCups').textContent = state.todayCups
-  $('entriesSummary').textContent = `${state.entries.length} saved across ${state.entriesByDate.size || 0} day(s)`
+  const trackedDays = state.entriesByDate.size || 0
+  const dayLabel = trackedDays === 1 ? 'day' : 'days'
+  $('entriesSummary').textContent = `${state.entries.length} saved across ${trackedDays} ${dayLabel}`
 }
 
 function renderListFallback() {
@@ -131,7 +145,7 @@ function render() {
   state.renderEntriesPage({
     listEl: $('entriesList'),
     paginationEl: $('paginationControls'),
-    entries: getSortedEntries(),
+    entries: state.sortedEntries,
     page: state.currentPage,
     pageSize: PAGE_SIZE,
     onEdit: editEntry,
@@ -173,8 +187,8 @@ function editEntry(id){
   const cups = prompt('Cups', entry.cups)
   if(cups == null) return
 
-  const nextCups = Number(cups)
-  if(!Number.isFinite(nextCups) || nextCups < 1) {
+  const nextCups = normalizeCups(cups)
+  if(nextCups == null) {
     updateStatus('Please enter at least 1 cup.', 'warn')
     return
   }
@@ -190,19 +204,30 @@ function editEntry(id){
 function initForm(){
   const form = $('entryForm')
   const dateInput = $('date')
-  dateInput.value = new Date().toISOString().slice(0,10)
+
+  function resetDateInput() {
+    dateInput.value = getTodayDateString()
+  }
+
+  resetDateInput()
 
   form.addEventListener('submit', event => {
     event.preventDefault()
+    const cups = normalizeCups($('cups').value)
+    if(cups == null) {
+      updateStatus('Please enter at least 1 cup.', 'warn')
+      return
+    }
+
     const data = {
       date: $('date').value,
       type: $('type').value,
-      cups: Number($('cups').value) || 1,
+      cups,
       notes: $('notes').value.trim()
     }
     addEntry(data)
     form.reset()
-    dateInput.value = new Date().toISOString().slice(0,10)
+    resetDateInput()
   })
 }
 
@@ -223,8 +248,12 @@ function initPagination() {
 
 function scheduleNonCriticalWork(callback) {
   if('requestIdleCallback' in window) {
-    window.requestIdleCallback(callback, { timeout: 1200 })
-    return
+    try {
+      window.requestIdleCallback(callback, { timeout: IDLE_CALLBACK_TIMEOUT })
+      return
+    } catch(error) {
+      reportError('Idle callback scheduling failed', error)
+    }
   }
 
   window.setTimeout(callback, 0)
@@ -244,7 +273,8 @@ async function ensureEntriesViewLoaded() {
       state.renderEntriesPage = module.renderEntriesPage
       performance.mark('entries-view-end')
       performance.measure('entries-view-latency', 'entries-view-start', 'entries-view-end')
-      const measure = performance.getEntriesByName('entries-view-latency').slice(-1)[0]
+      const measures = performance.getEntriesByName('entries-view-latency', 'measure')
+      const measure = measures[measures.length - 1]
       if(measure) reportMetric('entries_view_load_ms', Math.round(measure.duration))
       return state.renderEntriesPage
     })

@@ -1,4 +1,5 @@
-const CACHE_NAME = 'coffee-tracker-static-v1'
+const CACHE_VERSION = 'v1'
+const CACHE_NAME = `coffee-tracker-static-${CACHE_VERSION}`
 const ASSETS = [
   './',
   './index.html',
@@ -35,7 +36,20 @@ self.addEventListener('fetch', event => {
 
   event.respondWith(
     caches.match(request).then(cachedResponse => {
-      const networkResponse = fetch(request)
+      if(cachedResponse) {
+        fetch(request)
+          .then(response => {
+            if(response.ok) {
+              const responseToCache = response.clone()
+              caches.open(CACHE_NAME).then(cache => cache.put(request, responseToCache))
+            }
+          })
+          .catch(error => console.warn('Background cache refresh failed', error))
+
+        return cachedResponse
+      }
+
+      return fetch(request)
         .then(response => {
           if(response.ok) {
             const responseToCache = response.clone()
@@ -43,9 +57,12 @@ self.addEventListener('fetch', event => {
           }
           return response
         })
-        .catch(() => cachedResponse)
-
-      return cachedResponse || networkResponse
+        .catch(() => {
+          return new Response('Offline content unavailable.', {
+            status: 503,
+            statusText: 'Service Unavailable'
+          })
+        })
     })
   )
 })
