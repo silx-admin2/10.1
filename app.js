@@ -62,7 +62,7 @@ function editEntry(id){
   const e = state.entries.find(x=> x.id===id)
   if(!e) return
   const cups = prompt('Cups', e.cups)
-  if(cups==null) return
+  if(cups===null) return
   const notes = prompt('Notes', e.notes||'')
   e.cups = Number(cups) || e.cups
   e.notes = notes
@@ -95,3 +95,9 @@ function initForm(){
 
 initForm()
 render()
+
+/* Allow pure functions to be imported in tests */
+/* global module */
+if (typeof module !== 'undefined') {
+  module.exports = { escapeHtml, load, save, state, addEntry, deleteEntry, editEntry, render }
+}
