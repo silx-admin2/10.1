@@ -45,7 +45,9 @@ function validateEntry(data) {
 function showStatus(message, isError){
   const status = $('formStatus')
   status.textContent = message || ''
-  status.className = `status-message${message ? ' is-visible' : ''}${message ? (isError ? ' is-error' : ' is-success') : ''}`
+  const classes = ['status-message']
+  if(message) classes.push(isError ? 'is-error' : 'is-success')
+  status.className = classes.join(' ')
 }
 
 function setFormMode() {
